@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/kwakuosafo/Desktop/Kwaku/ashesi/fourth year/operating systems/laura_musa_kwaku_os",
+      "program": "/Users/kwakuosafo/Desktop/Kwaku/ashesi/fourth year/operating systems/laura_musa_kwaku_os/build/Debug/outDebug"
+    }
+  ]
+}
