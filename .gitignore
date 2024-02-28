@@ -1,0 +1,8 @@
+# Ignore VS Code folder
+vscode/
+
+# Ignore output folder
+output/
+
+# ignore main.dSYM folder
+main.dSYM/
