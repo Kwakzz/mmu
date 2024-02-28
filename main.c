@@ -85,6 +85,7 @@ struct page
 struct PCB physical_memory [NO_OF_FRAMES][FRAME_SIZE]; // [64][16]
 struct page virtual_memory[NO_OF_PAGES][PAGE_SIZE]; // [256]
 struct PCB* master_outer_page_table[MAX_PROCESS_COUNT];
+int physical_memory_remaining = PHYSICAL_MEMORY_SIZE;
 
 
 // FUNCTION DECLARATIONS
@@ -300,8 +301,8 @@ int first_fit(struct PCB *process, int offset) {
 
         printf("Memory allocated successfully at frame %d for process with ID %d. Process is occupying %d frames.\n", start_frame, 
         process->id, required_no_of_frames);
-        int memory_remaining = PHYSICAL_MEMORY_SIZE - process->size;
-        printf("%d bytes of physical memory remaining\n\n", memory_remaining);
+        physical_memory_remaining = physical_memory_remaining - process->size;
+        printf("%d bytes of physical memory remaining.\n\n", physical_memory_remaining);
         return start_frame;
 
     }
