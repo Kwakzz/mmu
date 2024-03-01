@@ -176,6 +176,8 @@ int main () {
     }
 
     // visualize_physical_memory();
+    visualize_physical_memory();
+    visualize_virtual_memory();
 
     for (int i =0; i<num_of_processes; i++) {
         memory_deallocation(master_outer_page_table[i]);
@@ -183,6 +185,7 @@ int main () {
 
 
     visualize_physical_memory();
+    visualize_virtual_memory();
 
 
     // Free allocated memory for each process when done
@@ -219,12 +222,11 @@ void hierarchical_translation(int logical_address, struct PCB *process) {
     printf("Offset: %d\n", offset);
 
     // assign process to page(s) in virtual memory.
-    int required_no_of_pages = process->size_in_memory / PAGE_SIZE;
+    int required_no_of_pages = (int)ceil((double)process->size_in_memory / PAGE_SIZE );
     for (int i = page_number; i < page_number + required_no_of_pages; i++) {
-        // for (int j = 0; j < offset; j++) {
-        //     virtual_memory[i][j].process = *process;
-        // }
-        virtual_memory[i][offset].process = *process;
+        for (int j = 0; j < FRAME_SIZE; j++) {
+            virtual_memory[i][offset].process = *process;
+        }
     }
 
     int inner_page_table_no = page_number / NO_OF_PAGE_TABLE_ENTRIES_IN_PAGE;
@@ -273,11 +275,11 @@ int generate_random_process_size() {
 /**
  * @brief Generate a random memory capacity as a process' request for memory.
  * 
- * @param process_size the size of the process requesting for memory. A process cannot request for memory space greater than its size.
+ * @param process_size the size of the process requesting for memory. A process cannot request for memory space greater than its size. The memory requested is at least 1 byte.
  * @return A random memory request size of type int.
  */
 int generate_random_request_size(int process_size) {
-    return (rand() % (process_size + 1));
+    return (rand() % (process_size - 1 + 1)) + 1;
 }
 
 
@@ -290,9 +292,9 @@ int generate_random_request_size(int process_size) {
  * @return The starting frame number for the process. This frame number is used to update the page table.
  */
 int first_fit(struct PCB *process, int offset) {
-    printf("Using first fit algorithm to allocate memory for Process %d, with size %d bytes...\n", process->id, process->size);
+    printf("Using first fit algorithm to allocate memory for Process %d, with size %d bytes...\n", process->id, process->size_in_memory);
 
-    int required_no_of_frames = process->size / FRAME_SIZE;
+    int required_no_of_frames = (int)ceil((double)process->size_in_memory / FRAME_SIZE);
     printf("Process with ID, %d, requires %d frames\n", process->id, required_no_of_frames);
 
     int frame_counter = 0;
@@ -545,18 +547,19 @@ int find_process_page_number (struct PCB *process) {
  * @param process The process whose frame is to be found
  * @return int The frame number of the process. It returns -1 if the process is not in memory.
  */
-int find_process_frame_number (struct PCB *process) {
-
+int find_process_frame_number(struct PCB *process) {
     int page_number = find_process_page_number(process);
     printf("PROCESS %d page number is %d\n", process->id, page_number);
 
-    if (page_number!= -1) {
-
+    if (page_number != -1) {
         int inner_page_table_no = page_number / NO_OF_PAGE_TABLE_ENTRIES_IN_PAGE;
         int inner_page_table_offset = page_number % NO_OF_PAGE_TABLE_ENTRIES_IN_PAGE;
-        int frame_number = process->inner_page_tables[inner_page_table_no][inner_page_table_offset].frame_number;
-        return frame_number;
 
+        // Check if the page is valid before retrieving the frame number
+        if (process->inner_page_tables[inner_page_table_no][inner_page_table_offset].valid) {
+            int frame_number = process->inner_page_tables[inner_page_table_no][inner_page_table_offset].frame_number;
+            return frame_number;
+        }
     }
 
     return -1;
