@@ -1,11 +1,11 @@
 #include<stdio.h>
 #include<stdlib.h>
-#include <time.h>
-#include <math.h>
+#include<time.h>
+#include<math.h>
 
 
 // CONSTANTS
-#define MAX_PROCESS_COUNT 64 // Max process count is the size of the outer page table.
+#define MAX_PROCESS_COUNT 8 // Max process count is the size of the outer page table.
 
 // Let's assume all integers related to size are in bytes
 #define MIN_PROCESS_SIZE 16  // 16B 
@@ -60,10 +60,13 @@ struct page_table_entry
  * @brief A struct representing a process control block (PCB). The PCB contains info about a process. For this program we'll focus on id, size and outer page table (Each process has its own page table) (And this program uses hierarchical paging)
  * @param id - The id of the process. Generated sequentially.
  * @param size - The size of the process in bytes. Determines the number of frames it will require. For example, a process of size 12 bytes in an MMU using pages of size 4 bytes will require 3 pages. If a process requires 3 pages, it requires n frames since frame size is equal to frame size.
+ * @param size_in_memory The amount of space in memory the process is occupying. It's an int value.
+ * @param inner_page_tables A 2D array representing the inner page tables of a process.
  */
 struct PCB {
     int id;
     int size;
+    int size_in_memory;
     struct page_table_entry inner_page_tables[OUTER_PAGE_TABLE_SIZE][NO_OF_PAGE_TABLE_ENTRIES_IN_PAGE];
 };
 
@@ -76,7 +79,7 @@ struct PCB {
 struct page
 {
     int page_number;
-    struct PCB* process;
+    struct PCB process;
 };
 
 
@@ -86,92 +89,104 @@ struct PCB physical_memory [NO_OF_FRAMES][FRAME_SIZE]; // [64][16]
 struct page virtual_memory[NO_OF_PAGES][PAGE_SIZE]; // [256]
 struct PCB* master_outer_page_table[MAX_PROCESS_COUNT];
 int physical_memory_remaining = PHYSICAL_MEMORY_SIZE;
-
+int no_of_page_faults = 0;
 
 // FUNCTION DECLARATIONS
 int generate_random_logical_address();
 int generate_random_process_size();
+int generate_random_request_size(int process_size);
+
+struct PCB create_process(int process_number);
+int memory_request(struct PCB *process);
+int find_process_page_number (struct PCB *process);
+int find_process_frame_number (struct PCB *process); 
+
 void initialize_process_page_tables(struct PCB *process);
 void hierarchical_translation(int logical_address, struct PCB *process);
 int first_fit(struct PCB *process, int offset);
 void update_page_table(struct PCB *process, int logical_address, int frame_number);
+void memory_deallocation(struct PCB *process);
+
 void initialize_physical_memory();
 void initialize_virtual_memory();
 void visualize_physical_memory();
 void visualize_virtual_memory();
+void visualize_inner_page_tables(struct PCB *process);
 
+
+
+// --- MAIN ---
 int main () {
 
     // Seed the random number generator with the current time
     srand((unsigned int)time(NULL));
 
-    // initialize physical memory
+    
     printf("This is a simulation of an MMU. In this simulation, -1 indicates an empty memory address\n");
     printf("Below are its specs:\n\n");
 
+    // Display physical memory specs
     printf("PHYSICAL MEMORY SIZE: %d bytes\n", PHYSICAL_MEMORY_SIZE);
     printf("NO OF FRAMES IN PHYSICAL MEMORY: %d\n", NO_OF_FRAMES);
     printf("FRAME SIZE: %d bytes\n\n", FRAME_SIZE);
 
+    // Display virtual memory specs
     printf("VIRTUAL MEMORY SIZE: %d bytes\n", VIRTUAL_MEMORY_SIZE);
     printf("NO OF PAGES IN VIRTUAL MEMORY: %d\n\n", NO_OF_PAGES);
     printf("PAGE SIZE: %d bytes\n\n", PAGE_SIZE);
 
+    // initialize physical memory
     printf("Initializing physical memory...\n");
     initialize_physical_memory();
 
+    // initialize virtual memory
     printf("Initializing virtual memory...\n");
     initialize_virtual_memory();
 
+    int num_of_processes;
+
+    printf("\nHow many processes do you want to create? Maximum is 64\n");
+    scanf("%d", &num_of_processes);
 
     printf("Creating processes...\n\n");
 
-    // CREATE PROCESSES
-    for (int i = 0; i < 5; i++) {
-        int process_size = generate_random_process_size();
+    for (int i = 0; i < num_of_processes; i++) {
+        
+        // create process
+        struct PCB process = create_process(i);
 
-        // Allocate memory for struct PCB
-        master_outer_page_table[i] = malloc(sizeof(struct PCB));
-        if (master_outer_page_table[i] == NULL) {
-            // Handle memory allocation failure
-            fprintf(stderr, "Failed to allocate memory for struct PCB\n");
-            exit(EXIT_FAILURE);
+        // if process wasn't created, end simulation
+        if (process.id == -1) {
+            exit(0);
         }
 
-        master_outer_page_table[i]->id = i;
-        master_outer_page_table[i]->size = process_size;
+        initialize_process_page_tables(&process);
 
-        printf("\nProcess ID: %d\n", master_outer_page_table[i]->id);
-        printf("Process Size: %d bytes\n", master_outer_page_table[i]->size);
+        int memory_request_size = memory_request(&process);
 
-        initialize_process_page_tables(master_outer_page_table[i]);
+        if (memory_request_size != -1) {
+            // generate random logical address. This logical address points to a page which will be assigned to the process.
+            int logical_address = generate_random_logical_address();
 
-        // generate random logical address. This logical address points to a page which will be assigned to the process.
-        int logical_address = generate_random_logical_address();
-
-        // allocate memory to processes
-        hierarchical_translation(logical_address, master_outer_page_table[i]);
+            // allocate memory to processes
+            hierarchical_translation(logical_address, &process);
+            visualize_inner_page_tables(&process);
+        }
 
     }
-    
 
-    // // Simulate processes, perform memory accesses, etc.
-    // for (int i = 0; i<5; i++) {
+    // visualize_physical_memory();
 
-    //     // generate random logical address. This logical address points to a page which will be assigned to the process.
-    //     int logical_address = generate_random_logical_address();
+    for (int i =0; i<num_of_processes; i++) {
+        memory_deallocation(master_outer_page_table[i]);
+    }
 
-    //     // allocate memory to processes
-    //     hierarchical_translation(logical_address, master_outer_page_table[i]);
 
-    //     // visualize_process_page_table(master_outer_page_table[i]);
-    // }
-
-    visualize_virtual_memory();
+    visualize_physical_memory();
 
 
     // Free allocated memory for each process when done
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < MAX_PROCESS_COUNT; i++) {
         free(master_outer_page_table[i]);
     }
 
@@ -204,11 +219,12 @@ void hierarchical_translation(int logical_address, struct PCB *process) {
     printf("Offset: %d\n", offset);
 
     // assign process to page(s) in virtual memory.
-    int required_no_of_pages = process->size / PAGE_SIZE;
+    int required_no_of_pages = process->size_in_memory / PAGE_SIZE;
     for (int i = page_number; i < page_number + required_no_of_pages; i++) {
-        for (int j = 0; j < offset; j++) {
-            virtual_memory[i][j].process = process;
-        }
+        // for (int j = 0; j < offset; j++) {
+        //     virtual_memory[i][j].process = *process;
+        // }
+        virtual_memory[i][offset].process = *process;
     }
 
     int inner_page_table_no = page_number / NO_OF_PAGE_TABLE_ENTRIES_IN_PAGE;
@@ -217,6 +233,8 @@ void hierarchical_translation(int logical_address, struct PCB *process) {
     struct page_table_entry pte = process->inner_page_tables[inner_page_table_no][inner_page_table_offset];
 
     if (pte.frame_number == -1) {
+
+        no_of_page_faults++;
         printf("Page Fault (Page entry has not yet been assigned a frame).\n");
 
         // find contiguous block of frames for process
@@ -227,12 +245,9 @@ void hierarchical_translation(int logical_address, struct PCB *process) {
     }
 
     else {
-        printf("Page %d is being held by another process", page_number);
+       printf("Page %d has already been assigned to a frame for this process", page_number);
     }
 }
-
-
-
 
 
 /**
@@ -256,15 +271,25 @@ int generate_random_process_size() {
 }
 
 /**
+ * @brief Generate a random memory capacity as a process' request for memory.
+ * 
+ * @param process_size the size of the process requesting for memory. A process cannot request for memory space greater than its size.
+ * @return A random memory request size of type int.
+ */
+int generate_random_request_size(int process_size) {
+    return (rand() % (process_size + 1));
+}
+
+
+/**
  * @brief First fit algorithm for memory allocation
  * 
  * @param process The process to be allocated memory
  * @param offset The number of bytes in a frame a process needs to occupy.
  * 
- * @return The starting frame number for the process. This frame numer is used to update the page table.
+ * @return The starting frame number for the process. This frame number is used to update the page table.
  */
 int first_fit(struct PCB *process, int offset) {
-
     printf("Using first fit algorithm to allocate memory for Process %d, with size %d bytes...\n", process->id, process->size);
 
     int required_no_of_frames = process->size / FRAME_SIZE;
@@ -275,14 +300,21 @@ int first_fit(struct PCB *process, int offset) {
 
     // Iterate through physical memory to find the first block of consecutive free frames
     for (int i = 0; i < NO_OF_FRAMES; i++) {
-        if (physical_memory[i][0].id == -1) {
+        int byte_counter = 0;
+        while (byte_counter != FRAME_SIZE) {
+            if (physical_memory[i][byte_counter].id != -1) {
+                start_frame = -1;
+                frame_counter = 0;
+                break;
+            }
+            byte_counter++;
+        }
+
+        if (byte_counter == FRAME_SIZE) {
             if (start_frame == -1) {
                 start_frame = i;
             }
             frame_counter++;
-        } else {
-            frame_counter = 0;
-            start_frame = -1;
         }
 
         if (frame_counter == required_no_of_frames) {
@@ -294,24 +326,22 @@ int first_fit(struct PCB *process, int offset) {
     if (frame_counter == required_no_of_frames) {
         // Update physical memory to store the process identifier or reference
         for (int i = start_frame; i < start_frame + required_no_of_frames; i++) {
-            for (int j = 0; j<offset; j++) {
-                physical_memory[i][j] = *process;
+            for (int j = 0; j < FRAME_SIZE; j++) {
+                physical_memory[i][offset] = *process;
             }
         }
 
         printf("Memory allocated successfully at frame %d for process with ID %d. Process is occupying %d frames.\n", start_frame, 
         process->id, required_no_of_frames);
-        physical_memory_remaining = physical_memory_remaining - process->size;
+        physical_memory_remaining -= process->size;
         printf("%d bytes of physical memory remaining.\n\n", physical_memory_remaining);
         return start_frame;
-
     }
 
     printf("No free frame was found for process with id %d\n", process->id);
     return -1;
-        
-    
 }
+
 
 
 /**
@@ -360,6 +390,7 @@ void initialize_virtual_memory() {
     for (int i = 0; i < NO_OF_PAGES; i++) {
         for (int j = 0; j < PAGE_SIZE; j++) {
             virtual_memory[i][j].page_number = i;
+            virtual_memory[i][j].process.id = -1;
         }
     }
 
@@ -395,7 +426,11 @@ void visualize_physical_memory() {
 
     for (int i = 0; i < NO_OF_FRAMES; i++) {
         for (int j = 0; j < FRAME_SIZE; j++) {
-            printf("%2d ", physical_memory[i][j].id);
+            if (physical_memory[i][j].id != -1) {
+                printf("%2d ", physical_memory[i][j].id);
+            } else {
+                printf(" - ");
+            }
         }
         printf("\n");
     }
@@ -412,12 +447,185 @@ void visualize_virtual_memory() {
 
     for (int i = 0; i < NO_OF_PAGES; i++) {
         for (int j = 0; j < PAGE_SIZE; j++) {
-            if (virtual_memory[i][j].process != NULL) {
-                printf("%2d ", virtual_memory[i][j].process->id);
+            if (virtual_memory[i][j].process.id != -1) {
+                printf("%2d ", virtual_memory[i][j].process.id);
             } else {
                 printf(" - ");
             }
         }
         printf("\n");
     }
+}
+
+
+/**
+ * @brief Create a process object
+ * 
+ * @param process_number The index of the process in the master outer page table. This is also equal to the process' ID. 
+ * @return If process creation is successful, return an object of type struct PCB with a size, and an ID >= 0. Otherwise, return a process with an ID of -1.
+ */
+struct PCB create_process(int process_number) {
+
+    size_t no_of_processes = sizeof(master_outer_page_table) / sizeof(master_outer_page_table[0]);
+
+    // check if the maximum process count has been reached. If it has, don't allow the process to be created.
+    if (no_of_processes > MAX_PROCESS_COUNT) {
+        printf("Process creation failed. Maximum process count has been reached. You need to wait for other processes to finish executing.\n");
+        struct PCB failed_process;
+        failed_process.id = -1;
+        return failed_process;
+    }
+
+    int process_size = generate_random_process_size();
+
+    // Allocate memory for struct PCB
+    master_outer_page_table[process_number] = malloc(sizeof(struct PCB));
+    if (master_outer_page_table[process_number] == NULL) {
+        // Handle memory allocation failure
+        fprintf(stderr, "Failed to allocate memory for struct PCB\n");
+        exit(EXIT_FAILURE);
+    }
+
+    master_outer_page_table[process_number]->id = process_number;
+    master_outer_page_table[process_number]->size = process_size;
+    master_outer_page_table[process_number]->size_in_memory = 0;
+
+    printf("\nProcess ID: %d\n", master_outer_page_table[process_number]->id);
+    printf("Process Size: %d bytes\n", master_outer_page_table[process_number]->size);
+
+    return *master_outer_page_table[process_number];
+}
+
+
+/**
+ * @brief Process requests for memory space.
+ * 
+ * @param process The process requesting for memory space.
+ * @return the size of the request granted of type int. If the size is -1, the request wasn't granted.
+ */
+int memory_request (struct PCB *process) {
+    int request = generate_random_request_size(process->size);
+
+    printf("Process %d is requesting for %d bytes of memory...\n", process->id, request);
+
+    if (request < physical_memory_remaining) {
+        printf("Request Granted!\n");
+        process->size_in_memory = request;
+        return process->size_in_memory;
+    }
+    return -1;
+}
+
+
+/**
+ * @brief Find the page number of a process. If a process has multiple pages, this becomes the starting page number (Note that a process with multiple pages is stored in continguous blocks in virtual memory).
+ * 
+ * @param process The process whose page is to be found
+ * @return int The page number of the process. It returns -1 if the process has not been assigned a page.
+ */
+int find_process_page_number (struct PCB *process) {
+
+    // iterate through virtual memory to find the process' page
+    for (int i = 0; i<NO_OF_PAGES; i++) {
+        for (int j=0; j<PAGE_SIZE; j++) {
+            if (virtual_memory[i][j].process.id == process->id) {
+                // find the number of pages the process is occupying
+                return virtual_memory[i][j].page_number;
+            }
+        }
+    }
+
+    return -1;
+}
+
+
+/**
+ * @brief Find the frame number of a process. If a process has multiple frames, this becomes the starting frame number (Note that a process with multiple frane is stored in continguous blocks in physical memory).
+ * 
+ * @param process The process whose frame is to be found
+ * @return int The frame number of the process. It returns -1 if the process is not in memory.
+ */
+int find_process_frame_number (struct PCB *process) {
+
+    int page_number = find_process_page_number(process);
+    printf("PROCESS %d page number is %d\n", process->id, page_number);
+
+    if (page_number!= -1) {
+
+        int inner_page_table_no = page_number / NO_OF_PAGE_TABLE_ENTRIES_IN_PAGE;
+        int inner_page_table_offset = page_number % NO_OF_PAGE_TABLE_ENTRIES_IN_PAGE;
+        int frame_number = process->inner_page_tables[inner_page_table_no][inner_page_table_offset].frame_number;
+        return frame_number;
+
+    }
+
+    return -1;
+}
+
+
+/**
+ * @brief Remove a process from physical memory, unassign its pages, and update page tables accordingly.
+ * 
+ * @param process The process whose memory space is to be deallocated.
+ */
+void memory_deallocation(struct PCB *process) {
+
+    printf("Process %d has finished executing. Attempting to deallocate memory...\n", process->id);
+
+    int frame_number = find_process_frame_number(process);
+    printf("PROCESS %d frame number is %d\n", process->id, frame_number);
+    int no_of_frames = process->size / FRAME_SIZE;
+
+    // Free physical memory of the process
+    // first check if the process is in physcial memory.
+    if (frame_number != -1) {
+        for (int i = frame_number; i < frame_number + no_of_frames; i++) {
+            for (int j = 0; j < FRAME_SIZE; j++) {
+                if (physical_memory[i][j].id != -1) {
+                    // Free physical memory by marking the frame as empty
+                    physical_memory[i][j].id = -1;
+                }
+            }
+        }
+        physical_memory_remaining += process->size;
+        printf("Memory has been successfully deallocated! Process %d is no longer in memory. Physical memory remaining is now %d\n", process->id, physical_memory_remaining);
+
+        // Set process's page's number's corresponding frame to -1.
+        int page_number = find_process_page_number(process);
+        int inner_page_table_no = page_number / NO_OF_PAGE_TABLE_ENTRIES_IN_PAGE;
+        int inner_page_table_offset = page_number % NO_OF_PAGE_TABLE_ENTRIES_IN_PAGE;
+        process->inner_page_tables[inner_page_table_no][inner_page_table_offset].frame_number = -1;
+        process->inner_page_tables[inner_page_table_no][inner_page_table_offset].valid = 0;
+
+        // Free virtual memory of the process
+        for (int i = page_number; i < page_number + no_of_frames; i++) {
+            for (int j = 0; j < PAGE_SIZE; j++) {
+                if (virtual_memory[i][j].process.id != -1) {
+                    // Free virtual memory by marking the page as empty
+                    virtual_memory[i][j].process.id = -1;
+                }
+            }
+        }
+    }
+
+    
+
+}
+
+
+/**
+ * @brief Visualize the inner page tables of a process in a tabular format
+ * 
+ * @param process The process whose inner page tables are to be visualized
+ */
+void visualize_inner_page_tables(struct PCB *process) {
+    printf("Inner Page Tables Visualization for Process %d:\n", process->id);
+
+    for (int i = 0; i < OUTER_PAGE_TABLE_SIZE; i++) {
+        for (int j = 0; j < NO_OF_PAGE_TABLE_ENTRIES_IN_PAGE; j++) {
+            printf("(%d,%d) ", process->inner_page_tables[i][j].frame_number, process->inner_page_tables[i][j].valid);
+        }
+        printf("\n");
+    }
+    printf("\n");
 }
