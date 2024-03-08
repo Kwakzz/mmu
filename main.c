@@ -146,24 +146,24 @@ int main () {
     for (int i = 0; i < num_of_processes; i++) {
         
         // create process
-        struct PCB process = create_process(i);
+        create_process(i);
 
         // if process wasn't created, end simulation
-        if (process.id == -1) {
+        if (processes[i]->id == -1) {
             exit(0);
         }
 
-        initialize_process_page_tables(&process);
+        initialize_process_page_tables(processes[i]);
 
-        int memory_request_size = request_memory_space(&process);
+        int memory_request_size = request_memory_space(processes[i]);
 
         if (memory_request_size != -1) {
             // generate random logical address. This logical address points to a page which will be assigned to the process.
             int logical_address = generate_random_logical_address();
 
             // allocate memory to processes
-            translate_logical_address_to_physical(logical_address, &process);
-            visualize_inner_page_tables(&process);
+            translate_logical_address_to_physical(logical_address, processes[i]);
+            visualize_inner_page_tables(processes[i]);
         }
 
     }
@@ -332,7 +332,7 @@ int allocate_memory(struct PCB *process, int offset) {
 
         printf("Memory allocated successfully at frame %d for process with ID %d. Process is occupying %d frames.\n", start_frame, 
         process->id, required_no_of_frames);
-        available_physical_memory -= process->size;
+        available_physical_memory -= process->size_in_memory;
         printf("%d bytes of physical memory remaining.\n\n", available_physical_memory);
         return start_frame;
     }
@@ -582,6 +582,7 @@ int find_process_frame_number(struct PCB *process) {
 
         printf("INNER PAGE TABLE NUMBER: %d\n", inner_page_table_no);
         printf("INNER PAGE TABLE OFFSET: %d\n", inner_page_table_offset);
+        printf("INNER PAGE TABLE ENTRY VALID BIT: %d\n", process->inner_page_tables[inner_page_table_no][inner_page_table_offset].valid);
 
         // Check if the page is valid before retrieving the frame number
         if (process->inner_page_tables[inner_page_table_no][inner_page_table_offset].valid == 1) {
@@ -602,14 +603,15 @@ int find_process_frame_number(struct PCB *process) {
 void deallocate_memory(struct PCB *process) {
 
     printf("Process %d has finished executing. Attempting to deallocate memory...\n", process->id);
-
+    // visualize_inner_page_tables(process);
     int frame_number = find_process_frame_number(process);
     printf("PROCESS %d frame number is %d\n", process->id, frame_number);
-    int no_of_frames = process->size / FRAME_SIZE;
+    int no_of_frames = (int)ceil((double)process->size_in_memory / FRAME_SIZE);
 
     // Free physical memory of the process
     // first check if the process is in physcial memory.
     if (frame_number != -1) {
+        printf("Memory access successful! Page hit recorded.\n");
         no_of_page_hits+=1;
         for (int i = frame_number; i < frame_number + no_of_frames; i++) {
             for (int j = 0; j < FRAME_SIZE; j++) {
@@ -621,7 +623,7 @@ void deallocate_memory(struct PCB *process) {
         }
         available_physical_memory += process->size_in_memory;
         process->size_in_memory = 0;
-        printf("Memory has been successfully deallocated! Process %d is no longer in memory. Physical memory remaining is now %d\n", process->id, available_physical_memory);
+        printf("Memory has been successfully deallocated! Process %d is no longer in memory. Physical memory remaining is now %d\n\n", process->id, available_physical_memory);
 
         // Set process's page's number's corresponding frame to -1.
         int page_number = find_process_page_number(process);
