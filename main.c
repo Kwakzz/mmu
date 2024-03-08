@@ -186,8 +186,7 @@ int main () {
         free(processes[i]);
     }
 
-    
-
+    display_stats();
  
 
     return 0;
